@@ -18,6 +18,14 @@ cb_partmatch_reserved='''
 cb_partmatch_temp='''
 			$DATA_TYPE	$DATA_NAME		: $DATA_LENGTH;'''
 
+cb_partmatch_head='''
+	union{
+		struct{$DATA_BODY
+		}bits;
+		$FMT_TYPE vals;
+	}B${START_BYTE}_${END_BYTE}
+'''
+
 
 def getFrameFormat():
 	frameFormats = []
@@ -248,65 +256,82 @@ class Frame:
 		for sig_format in matched_format:
 			fmt_end_bit = fmt_start_bit + sig_format * 8 - 1
 			fmt_cur_offset = 0
-			
+			#print("fmt_start_bit=%d, fmt_end_bit=%d"%(fmt_start_bit, fmt_end_bit))
+			fmt_body_str = ''
+			fmt_str = ''
+			fmt_used_union = False
 
 			for sig in self.signals:
-                                sig_data_start = int(sig["start_bit"])
-                                sig_data_end   = int(sig["start_bit"] + sig["length"] - 1)
+				sig_data_start = int(sig["start_bit"])
+				sig_data_end   = int(sig["start_bit"] + sig["length"] - 1)
 
-                                # 判断信号是否在模型本单元内
-                                if sig_data_start > fmt_end_bit or sig_data_end < fmt_start_bit:
-                                        continue
-
-                                if sig_data_start > (fmt_start_bit+fmt_cur_offset):     # 模型单元中，本信号前还有预留的数据区
-                                        print("填充报文前的预留数据")
+                # 判断信号是否在模型本单元内
+				if sig_data_start > fmt_end_bit or sig_data_end < fmt_start_bit:
+					continue
+				if sig_data_start > (fmt_start_bit+fmt_cur_offset): # 模型单元中，本信号前还有预留的数据区
+					#print("填充报文前的预留数据")
 					strTmp = Template(cb_partmatch_reserved)
 					data_type = "uint" + str(int(sig_format * 8)) + "_t"
-					start_bit = int(format_cur_bit)
-					end_bit = (sig_start_bit - 1)
+					start_bit = int(fmt_cur_offset)
+					end_bit = (sig_data_start - 1)
 					start_bit_str = str(start_bit - fmt_start_bit)
 					end_bit_str = str(end_bit - fmt_start_bit) if (end_bit - start_bit) > 1 else ''
-					formatStr = strTmp.substitute(DATA_TYPE=data_type, START_BIT=start_bit_str, END_BIT=end_bit_str, DATA_LENGTH=str(sig_start_bit - format_cur_bit))
-					print(formatStr)
-					format_cur_bit = sig_start_bit - fmt_start_bit
+					formatStr = strTmp.substitute(DATA_TYPE=data_type, START_BIT=start_bit_str, END_BIT=end_bit_str, DATA_LENGTH=str(sig_data_start - fmt_cur_offset))
+					#print(formatStr)
+					fmt_body_str += formatStr
+					fmt_cur_offset = sig_data_start - fmt_start_bit
 
 				# 填充信号到模型中
 				if sig_data_start == fmt_start_bit and sig_data_end == fmt_end_bit:     #模型单元刚好被这一个信号填充完
-                                        print("刚好填充一个信号")
+					#print("刚好填充一个信号")
 					strTmp = Template(cb_fullmatch_temp)
 					data_type = self.getDataTypeStr(sig, sig_format * 8)
 					formatStr = strTmp.substitute(DATA_TYPE = data_type, DATA_NAME = sig["name"])
-					print(formatStr)	#输出报文内容
-					break   # 模型单元被填充完后不会有其他信号处于该模型单元内
+					#print(formatStr)	#输出报文内容
+					fmt_body_str += formatStr
+					#break   # 模型单元被填充完后不会有其他信号处于该模型单元内
 				else:
-                                        print("填充单个信号")
-                                        strTmp = Template(cb_partmatch_temp)
+					fmt_used_union = True
+					#print("填充单个信号")
+					strTmp = Template(cb_partmatch_temp)
 					data_type = self.getDataTypeStr(sig, sig_format * 8)
 					formatStr = strTmp.substitute(DATA_TYPE = data_type, DATA_NAME=sig["name"],DATA_LENGTH = int(sig["length"]))
-					print(formatStr)	#输出报文内容
-					fmt_cur_bit = int(sig["start_bit"] + sig["length"]) - fmt_start_bit # 模型单元接下来处理的起始位置设置为本信号结束位置的后一bit
+					#print(formatStr)	#输出报文内容
+					fmt_body_str += formatStr
+					fmt_cur_offset = int(sig["start_bit"] + sig["length"]) - fmt_start_bit # 模型单元接下来处理的起始位置设置为本信号结束位置的后一bit
 					continue # 处理下一个信号
-			if fmt_cur_bit < sig_format * 8: # 本模型单元中还有数据区为填充
-                                if fmt_cur_bit == 0: # 模型中没有填入任何数据
-                                        # 填充完成预留的模型单元
-                                        print("填充预留的模型单元")
-                                        strTmp = Template(cb_fullmatch_reserved)
-                                        data_type = "uint" + str(int(sig_format * 8)) + "_t"
-                                        start_byte_str = str(int(fmt_start_bit/8))
-                                        end_byte_str = str(fmt_start_bit/8 + sig_format) if sig_format > 1 else ''
-                                        formatStr = strTmp.substitute(DATA_TYPE=data_type, START_BYPE=start_byte_str, END_BYTE=end_byte_str)
-                                        print(formatStr)
-                                else:     
-                                        print("填充本模型单元尾部的预留区域")
-                                        strTmp = Template(cb_partmatch_reserved)
-                                        data_type = "uint" + str(int(sig_format * 8)) + "_t"
-                                        start_bit = int(format_cur_bit)
-                                        end_bit = sig_format*8 - 1
-                                        start_bit_str = str(format_cur_bit)
-                                        end_bit_str = str(end_bit) if (end_bit - start_bit) > 1 else ''
-                                        formatStr = strTmp.substitute(DATA_TYPE=data_type, START_BIT=start_bit_str, END_BIT=end_bit_str, DATA_LENGTH=str(sig_start_bit - format_cur_bit))
-                                        print(formatStr)				
-                        fmt_start_bit += sig_format * 8 # 设置模型处理的下一个单元的起始地址
+			if fmt_cur_offset < sig_format * 8: # 本模型单元中还有数据区为填充
+				if fmt_cur_offset == 0: # 模型中没有填入任何数据
+					# 填充完成预留的模型单元
+					#print("填充预留的模型单元")
+					strTmp = Template(cb_fullmatch_reserved)
+					data_type = "uint" + str(int(sig_format * 8)) + "_t"
+					start_byte_str = str(int(fmt_start_bit/8))
+					end_byte_str = str(fmt_start_bit/8 + sig_format) if sig_format > 1 else ''
+					formatStr = strTmp.substitute(DATA_TYPE=data_type, START_BYTE=start_byte_str, END_BYTE=end_byte_str)
+					#print(formatStr)
+					fmt_body_str += formatStr
+				else:     
+					#print("填充本模型单元尾部的预留区域")
+					strTmp = Template(cb_partmatch_reserved)
+					data_type = "uint" + str(int(sig_format * 8)) + "_t"
+					start_bit = int(fmt_cur_offset)
+					end_bit = sig_format*8 - 1
+					start_bit_str = str(fmt_cur_offset)
+					end_bit_str = str(end_bit) if (end_bit - start_bit) > 1 else ''
+					formatStr = strTmp.substitute(DATA_TYPE=data_type, START_BIT=start_bit_str, END_BIT=end_bit_str, DATA_LENGTH=str(sig_data_start - fmt_cur_offset))
+					#print(formatStr)
+					fmt_body_str += formatStr
+			if fmt_used_union:
+				strTmp = Template(cb_partmatch_head)
+				fmt_type = "uint" + str(sig_format) + "_t"
+				start_byte = str(int(fmt_start_bit/8))
+				end_byte = str(int(fmt_end_bit/8)) if sig_format > 1 else ''
+				fmt_str = strTmp.substitute(DATA_BODY=fmt_body_str, FMT_TYPE = fmt_type, START_BYTE = start_byte, END_BYTE = end_byte)
+			else:
+				fmt_str = fmt_body_str
+			print(fmt_str)	# output format unit string
+			fmt_start_bit += sig_format * 8 # 设置模型处理的下一个单元的起始地址
 
 
 						
