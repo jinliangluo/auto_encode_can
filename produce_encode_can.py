@@ -16,6 +16,13 @@ def validateTitle(title):
 	new_title = re.sub(rstr, "_", title) # 替换为下划线 
 	return new_title
 
+def validateBody(body):
+	rstr = r"[\=\(\)\,\/\\\:\*\?\"\<\>\|\' ']" # '= ( ) ， / \ : * ? " < > |  '   还有空格 
+	new_body = re.sub(rstr, "", body) # 删除特殊字符 
+	return (new_body.lower())
+
+
+
 def getDataTypeStr(sig, length):
 	data_type = ''
 	if sig["type"].find("unsigned") != -1:
@@ -27,7 +34,7 @@ def getDataTypeStr(sig, length):
 	elif sig["type"].find("double") != -1:
 		data_type = "double"
 	else:
-		print("unknow message type, signal: %s"%(sig["name"]))
+		print("unknow message type, signal: %s, type:%s"%(sig["name"], sig["type"]))
 		sys.exit()
 	return data_type
 
@@ -233,12 +240,19 @@ class Frame:
 				sig_data_start = int(sig["start_bit"])
 				sig_data_end   = int(sig["start_bit"] + sig["length"] - 1)
 
+				data_type = getDataTypeStr(sig, int(sig_format * 8))
+				invalid = "invalid:" + sig["invalid"] + '; ' if sig["invalid"] != '' else ''
+				factor = "factor:" + sig["factor"] + '; ' if sig["factor"] != '' else ''
+				offset = "offset:" + sig["offset"] + '; ' if sig["offset"] != '' else ''
+				unit = "unit:" + sig["unit"] + ';' if sig["unit"] != '' else ''
+				meaning = "value:" + sig["meaning"] + '; ' if sig["meaning"] != '' else ''
+				desc = "description:" + sig["comment"] + '; ' if sig["comment"] != '' else ''
                 # 判断信号是否在模型本单元内
 				if sig_data_start > fmt_end_bit or sig_data_end < fmt_start_bit:
 					continue
 				if sig_data_start > (fmt_start_bit+fmt_cur_offset): # 模型单元中，本信号前还有预留的数据区
 					#print("填充报文前的预留数据")
-					strTmp = Template(temp_str.cb_partmatch_reserved)
+					strTmp = Template(temp_string.cb_partmatch_reserved)
 					data_type = "uint" + str(int(sig_format * 8)) + "_t"
 					start_bit = int(fmt_cur_offset)
 					end_bit = (sig_data_start - 1)
@@ -251,16 +265,25 @@ class Frame:
 				# 填充信号到模型中
 				if sig_data_start == fmt_start_bit and sig_data_end == fmt_end_bit:     #模型单元刚好被这一个信号填充完
 					#print("刚好填充一个信号")
-					strTmp = Template(temp_str.cb_fullmatch_temp)
-					data_type = getDataTypeStr(sig, sig_format * 8)
-					formatStr = strTmp.substitute(DATA_TYPE = data_type, DATA_NAME = sig["name"])
+					strTmp = Template(temp_string.cb_fullmatch_temp)
+					#data_type = getDataTypeStr(sig, sig_format * 8)
+					#invalid = "invalid:" + sig["invalid"] + '; ' if sig["invalid"] != '' else ''
+					#factor = "factor:" + sig["factor"] + '; ' if sig["factor"] != '' else ''
+					#offset = "offset:" + sig["offset"] + '; ' if sig["offset"] != '' else ''
+					#unit = "unit:" + sig["unit"] + ';' if sig["unit"] != '' else ''
+					#meaning = "value:" + sig["meaning"] + '; ' if sig["meaning"] != '' else ''
+					#desc = "description:" + sig["comment"] + '; ' if sig["comment"] != '' else ''
+
+					formatStr = strTmp.substitute(DATA_TYPE = data_type, DATA_NAME = sig["name"], MIN_VAL=sig["rangefrom"], MAX_VAL=sig["rangeto"], INVALID=invalid, FACTOR=factor, OFFSET=offset, UNIT=unit, MEANING=meaning, DESCRIPTION=desc)
+					#print(sig["comment"])
 					fmt_body_str += formatStr
+					fmt_cur_offset = sig_format * 8
 					#break   # 模型单元被填充完后不会有其他信号处于该模型单元内
 				else:
 					fmt_used_union = True
-					strTmp = Template(temp_str.cb_partmatch_temp)
+					strTmp = Template(temp_string.cb_partmatch_temp)
 					data_type = getDataTypeStr(sig, int(sig_format * 8))
-					formatStr = strTmp.substitute(DATA_TYPE = data_type, DATA_NAME=sig["name"],DATA_LENGTH = int(sig["length"]))
+					formatStr = strTmp.substitute(DATA_TYPE = data_type, DATA_NAME=sig["name"],DATA_LENGTH = int(sig["length"]), MIN_VAL=sig["rangefrom"], MAX_VAL=sig["rangeto"], INVALID=invalid, FACTOR=factor, OFFSET=offset, UNIT=unit, MEANING=meaning, DESCRIPTION=desc)
 					fmt_body_str += formatStr
 					fmt_cur_offset = int(sig["start_bit"] + sig["length"]) - fmt_start_bit # 模型单元接下来处理的起始位置设置为本信号结束位置的后一bit
 					continue # 处理下一个信号
@@ -268,15 +291,16 @@ class Frame:
 				if fmt_cur_offset == 0: # 模型中没有填入任何数据
 					# 填充完成预留的模型单元
 					#print("填充预留的模型单元")
-					strTmp = Template(temp_str.cb_fullmatch_reserved)
+					strTmp = Template(temp_string.cb_fullmatch_reserved)
 					data_type = "uint" + str(int(sig_format * 8)) + "_t"
 					start_byte_str = str(int(fmt_start_bit/8))
-					end_byte_str = str(fmt_start_bit/8 + sig_format) if sig_format > 1 else ''
+					#end_byte_str = str(int(fmt_start_bit/8 + sig_format)) if sig_format > 1 else ''
+					end_byte_str = str(int(fmt_start_bit/8 + sig_format) - 1)
 					formatStr = strTmp.substitute(DATA_TYPE=data_type, START_BYTE=start_byte_str, END_BYTE=end_byte_str)
 					fmt_body_str += formatStr
 				else:     
 					#print("填充本模型单元尾部的预留区域")
-					strTmp = Template(temp_str.cb_partmatch_reserved)
+					strTmp = Template(temp_string.cb_partmatch_reserved)
 					data_type = "uint" + str(int(sig_format * 8)) + "_t"
 					start_bit = int(fmt_cur_offset)
 					end_bit = sig_format*8 - 1
@@ -285,7 +309,7 @@ class Frame:
 					formatStr = strTmp.substitute(DATA_TYPE=data_type, START_BIT=start_bit_str, END_BIT=end_bit_str, DATA_LENGTH=str(end_bit - start_bit + 1))
 					fmt_body_str += formatStr
 			if fmt_used_union:
-				strTmp = Template(temp_str.cb_partmatch_head)
+				strTmp = Template(temp_string.cb_partmatch_head)
 				fmt_type = "uint" + str(sig_format*8) + "_t"
 				start_byte = str(int(fmt_start_bit/8))
 				end_byte = str(int(fmt_end_bit/8)) if sig_format > 1 else ''
@@ -295,11 +319,11 @@ class Frame:
 			fmts_str += fmt_str
 			fmt_start_bit += sig_format * 8 # 设置模型处理的下一个单元的起始地址
 
-		frame_str_temp = Template(temp_str.cb_frame_tmp)
+		frame_str_temp = Template(temp_string.cb_frame_tmp)
 		self.frameStructStr = frame_str_temp.substitute(RDWR=self.type, CANID=str(self.id), FRAME_BODY = fmts_str)
 	
 
-excelFormat = {"framename":0, "frametype":1, "frameid":2, "period":3, "framelength":4, "signalname":5, "startbit":6, "signallength":7, "signaltype":8, "value":9, "offset":10, "factor":11, "rangefrom":12, "rangeto":13, "unit":14, "init":15, "description":16}
+excelFormat = {"framename":0, "frametype":1, "frameid":2, "period":3, "framelength":4, "signalname":5, "startbit":6, "signallength":7, "signaltype":8, "value":9, "offset":10, "factor":11, "rangefrom":12, "rangeto":13, "unit":14, "init":15, "invalid":16, "description":17}
 						
 def getExcelFormat(row_value):
 	global excelFormat
@@ -319,7 +343,6 @@ def getExcelFormat(row_value):
 			print("no key match: %s"%row_value[idx])
 			sys.exit()
 	print(excelFormat)
-	sys.exit()
 			
 				
 
@@ -345,22 +368,29 @@ for i in range(nrows):
 		getExcelFormat(table.row_values(0))
 		continue
 	if table.cell(i,0).ctype != 0:
-		name   = table.cell_value(i,0)
-		type   = table.cell_value(i,1)
-		id	   = table.cell_value(i,2)
-		period = table.cell_value(i,3)
-		length = table.cell_value(i,4)
+		name   = table.cell_value(i, excelFormat["framename"])
+		type   = validateBody(table.cell_value(i, excelFormat["frametype"]))
+		id	   = table.cell_value(i, excelFormat["frameid"])
+		period = table.cell_value(i, excelFormat["period"])
+		length = table.cell_value(i, excelFormat["framelength"])
 		canMsg[cur_msg_idx].setFrame(name = name, type = type, id = id, period = period, length = length)
 
-	sig_name = validateTitle(table.cell_value(i, 5))
+	sig_name = validateTitle(table.cell_value(i, excelFormat["signalname"]))
 	if sig_name == '':
 		continue
 
-	sig_meaning = table.cell_value(i, 6)
-	sig_start_bit = table.cell_value(i, 7)
-	sig_length = table.cell_value(i, 8)
-	sig_comment = table.cell_value(i, 17).strip().replace('\n', ';')
-	canMsg[cur_msg_idx].setSignal(name = sig_name, meaning = sig_meaning, start_bit = sig_start_bit, length = sig_length, comment = sig_comment)
+	sig_meaning = str(table.cell_value(i, excelFormat["value"])).replace("\n", ";")
+	sig_start_bit = table.cell_value(i, excelFormat["startbit"])
+	sig_length = table.cell_value(i, excelFormat["signallength"])
+	sig_type = validateBody(table.cell_value(i, excelFormat["signaltype"]))
+	factor = str(table.cell_value(i, excelFormat["factor"]))	# 先只设置为字符串类型
+	offset = str(table.cell_value(i, excelFormat["offset"]))
+	rangefrom = str(table.cell_value(i, excelFormat["rangefrom"]))
+	rangeto = str(table.cell_value(i, excelFormat["rangeto"]))
+	init = str(table.cell_value(i, excelFormat["init"]))
+	invalid = str(table.cell_value(i, excelFormat["invalid"]))
+	sig_comment = '' #str(table.cell_value(i, excelFormat["description"]).strip().replace('\n', ';'))
+	canMsg[cur_msg_idx].setSignal(name = sig_name, meaning = sig_meaning, start_bit = sig_start_bit, length = sig_length, type = sig_type, factor = factor, offset = offset, rangefrom = rangefrom, rangeto = rangeto, init = init, invalid = invalid, comment = sig_comment)
 
 	if (i+1) == nrows:	#一组数据组装完成
 		print("采集到第%d帧报文"%(cur_msg_idx))
@@ -385,13 +415,13 @@ def WriteData2File(data):
 			file.close()
 
 
-WriteData2File(temp_str.fl_head_string)
+WriteData2File(temp_string.fl_head_string)
 cans_frame_str = ''
 canr_frame_str = ''
 
 for idx in range(cur_msg_idx):
-	global cans_frame_str
-	global canr_frame_str
+	#global cans_frame_str
+	#global canr_frame_str
 	print("处理第%d帧报文"%idx)
 	#canMsg[idx].printFrame()
 	#canMsg[idx].printSignal()
@@ -419,7 +449,7 @@ func_comment='''
 /********************************** detected dataes process **********************************/
 '''
 WriteData2File(func_comment)
-WriteData2File(temp_str.func_lds_temp)
-WriteData2File(temp_str.func_vds_temp)
-WriteData2File(temp_str.func_pds_temp)
-WriteData2File(temp_str.func_tds_temp)
+WriteData2File(temp_string.func_lds_temp)
+WriteData2File(temp_string.func_vds_temp)
+WriteData2File(temp_string.func_pds_temp)
+WriteData2File(temp_string.func_tds_temp)
