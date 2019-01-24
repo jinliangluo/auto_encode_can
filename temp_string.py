@@ -7,23 +7,27 @@ cb_fullmatch_temp='''
 	$DATA_TYPE	$DATA_NAME;  // [${MIN_VAL}, ${MAX_VAL}] ${INVALID} ${FACTOR}${OFFSET}${UNIT}${MEANING}${DESCRIPTION}'''
 
 cb_fullmatch_reserved='''
-	$DATA_TYPE	reserved_B${START_BYTE}_${END_BYTE};'''
+	$DATA_TYPE	reserved_B${START_BYTE}${END_BYTE};'''
 
 cb_partmatch_reserved='''
-			$DATA_TYPE	reserved_b${START_BIT}_${END_BIT}		: $DATA_LENGTH;'''
+			$DATA_TYPE	reserved_b${START_BIT}${END_BIT}		: $DATA_LENGTH;'''
+
+cb_partmatch_reserved_none='''
+			$DATA_TYPE				: $DATA_LENGTH;'''
 
 cb_partmatch_temp='''
-			$DATA_TYPE	$DATA_NAME		: $DATA_LENGTH;	// [${MIN_VAL}, ${MAX_VAL}] ${INVALID} ${FACTOR}${OFFSET}${UNIT}${MEANING}${DESCRIPTION}'''
+			$DATA_TYPE	$DATA_NAME		: $DATA_LENGTH;	// [${MIN_VAL},${MAX_VAL}] ${INVALID} ${FACTOR}${OFFSET}${UNIT}${MEANING}${DESCRIPTION}'''
 
 cb_partmatch_head='''
 	union{
 		struct{$DATA_BODY
 		} bits;
 		$FMT_TYPE vals;
-	} B${START_BYTE}_${END_BYTE};'''
+	} B${START_BYTE}${END_BYTE};'''
 
 cb_frame_tmp = '''
-struct can${RDWR}_id${CANID} {$FRAME_BODY	
+// id:${CANID} period:$PERIOD
+struct can${RDWR}_${NAME} {$FRAME_BODY	
 }__attribute__((packed));
 '''
 

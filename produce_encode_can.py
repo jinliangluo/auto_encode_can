@@ -11,10 +11,10 @@ import temp_string
 
 
 
-def validateTitle(title):
+def validateName(title):
 	rstr = r"[\=\(\)\,\/\\\:\*\?\"\<\>\|\' ']" # '= ( ) ， / \ : * ? " < > |  '   还有空格 
 	new_title = re.sub(rstr, "_", title) # 替换为下划线 
-	return new_title
+	return new_title.lower()
 
 def validateBody(body):
 	rstr = r"[\=\(\)\,\/\\\:\*\?\"\<\>\|\' ']" # '= ( ) ， / \ : * ? " < > |  '   还有空格 
@@ -48,7 +48,7 @@ def getFrameFormat():
 	
 	# 6 uint8, 1 uint16
 	frameFormat = [1,1,1,1,1,1]
-	for i in range (0, len(frameFormat)):
+	for i in range (0, len(frameFormat)+1):
 		frameFormat_tmp = frameFormat[:]
 		frameFormat_tmp.insert(i, 2)
 		frameFormats.append(frameFormat_tmp)
@@ -56,10 +56,10 @@ def getFrameFormat():
 	
 	# 4 uint8, 2 uint16
 	frameFormat = [1,1,1,1]
-	for m in range(len(frameFormat)):
+	for m in range(len(frameFormat)+1):
 		format_tmp1 = frameFormat[:]
 		format_tmp1.insert(m, 2)
-		for n in range(len(format_tmp1)):
+		for n in range(len(format_tmp1)+1):
 			format_tmp2 = format_tmp1[:]
 			format_tmp2.insert(n, 2)
 			frameFormats.append(format_tmp2)
@@ -67,38 +67,38 @@ def getFrameFormat():
 	
 	# 2 uint8, 3 uint16
 	frameFormat = [2,2,2]
-	for m in range(len(frameFormat)):
+	for m in range(len(frameFormat)+1):
 		format_tmp1 = frameFormat[:]
 		format_tmp1.insert(m, 1)
-		for n in range(len(format_tmp1)):
+		for n in range(len(format_tmp1)+1):
 			format_tmp2 = format_tmp1[:]
 			format_tmp2.insert(n, 1)
 			frameFormats.append(format_tmp2)
 	
 	# 0 uint8, 4 uint16
-	frameFormat = [2,2,2]
+	frameFormat = [2,2,2,2]
 	frameFormats.append(frameFormat)
 	
 	# 4 uint8, 1 uint32
 	frameFormat = [1,1,1,1]
-	for i in range (0, len(frameFormat)):
+	for i in range (0, len(frameFormat)+1):
 		frameFormat_tmp = frameFormat[:]
 		frameFormat_tmp.insert(i, 4)
 		frameFormats.append(frameFormat_tmp)
 	
 	# 2 uint8, 1 uint16, 1 uint32
 	frameFormat = [1,1]
-	for m in range(len(frameFormat)):
+	for m in range(len(frameFormat)+1):
 		format_tmp1 = frameFormat[:]
 		format_tmp1.insert(m, 2)
-		for n in range(len(format_tmp1)):
+		for n in range(len(format_tmp1)+1):
 			format_tmp2 = format_tmp1[:]
 			format_tmp2.insert(n, 4)
 			frameFormats.append(format_tmp2)
 	
 	# 2 uint16, 1 uint32
 	frameFormat = [2,2]
-	for i in range (0, len(frameFormat)):
+	for i in range (0, len(frameFormat)+1):
 		frameFormat_tmp = frameFormat[:]
 		frameFormat_tmp.insert(i, 4)
 		frameFormats.append(frameFormat_tmp)
@@ -116,7 +116,6 @@ def getFrameFormat():
 	for ff in frameFormats:
 		if ff not in ret:
 			ret.append(ff)
-	
 	return ret
 	
 
@@ -252,13 +251,15 @@ class Frame:
 					continue
 				if sig_data_start > (fmt_start_bit+fmt_cur_offset): # 模型单元中，本信号前还有预留的数据区
 					#print("填充报文前的预留数据")
-					strTmp = Template(temp_string.cb_partmatch_reserved)
+					#strTmp = Template(temp_string.cb_partmatch_reserved)
+					strTmp = Template(temp_string.cb_partmatch_reserved_none)
 					data_type = "uint" + str(int(sig_format * 8)) + "_t"
 					start_bit = int(fmt_cur_offset)
 					end_bit = (sig_data_start - 1)
 					start_bit_str = str(fmt_cur_offset)#str(start_bit - fmt_start_bit)
 					end_bit_str = str(end_bit - fmt_start_bit) if (end_bit - start_bit) > 1 else ''
-					formatStr = strTmp.substitute(DATA_TYPE=data_type, START_BIT=start_bit_str, END_BIT=end_bit_str, DATA_LENGTH=str(sig_data_start - fmt_cur_offset))
+					#formatStr = strTmp.substitute(DATA_TYPE=data_type, START_BIT=start_bit_str, END_BIT=end_bit_str, DATA_LENGTH=str(sig_data_start - fmt_cur_offset))
+					formatStr = strTmp.substitute(DATA_TYPE=data_type, DATA_LENGTH=str(sig_data_start - fmt_cur_offset))
 					fmt_body_str += formatStr
 					fmt_cur_offset = sig_data_start - fmt_start_bit
 
@@ -295,18 +296,19 @@ class Frame:
 					data_type = "uint" + str(int(sig_format * 8)) + "_t"
 					start_byte_str = str(int(fmt_start_bit/8))
 					#end_byte_str = str(int(fmt_start_bit/8 + sig_format)) if sig_format > 1 else ''
-					end_byte_str = str(int(fmt_start_bit/8 + sig_format) - 1)
+					end_byte_str = str(int(fmt_start_bit/8 + sig_format) - 1) if sig_format != 1 else ''
 					formatStr = strTmp.substitute(DATA_TYPE=data_type, START_BYTE=start_byte_str, END_BYTE=end_byte_str)
 					fmt_body_str += formatStr
 				else:     
 					#print("填充本模型单元尾部的预留区域")
-					strTmp = Template(temp_string.cb_partmatch_reserved)
+					#strTmp = Template(temp_string.cb_partmatch_reserved)
+					strTmp = Template(temp_string.cb_partmatch_reserved_none)
 					data_type = "uint" + str(int(sig_format * 8)) + "_t"
 					start_bit = int(fmt_cur_offset)
 					end_bit = sig_format*8 - 1
 					start_bit_str = str(fmt_cur_offset)
 					end_bit_str = str(end_bit) if (end_bit - start_bit) > 1 else ''
-					formatStr = strTmp.substitute(DATA_TYPE=data_type, START_BIT=start_bit_str, END_BIT=end_bit_str, DATA_LENGTH=str(end_bit - start_bit + 1))
+					formatStr = strTmp.substitute(DATA_TYPE=data_type, DATA_LENGTH=str(end_bit - start_bit + 1))
 					fmt_body_str += formatStr
 			if fmt_used_union:
 				strTmp = Template(temp_string.cb_partmatch_head)
@@ -320,7 +322,8 @@ class Frame:
 			fmt_start_bit += sig_format * 8 # 设置模型处理的下一个单元的起始地址
 
 		frame_str_temp = Template(temp_string.cb_frame_tmp)
-		self.frameStructStr = frame_str_temp.substitute(RDWR=self.type, CANID=str(self.id), FRAME_BODY = fmts_str)
+		#self.frameStructStr = frame_str_temp.substitute(RDWR=self.type, CANID=str(self.id), FRAME_BODY = fmts_str)
+		self.frameStructStr = frame_str_temp.substitute(RDWR=self.type, CANID=str(self.id), PERIOD=int(self.period), NAME=self.name, FRAME_BODY = fmts_str)
 	
 
 excelFormat = {"framename":0, "frametype":1, "frameid":2, "period":3, "framelength":4, "signalname":5, "startbit":6, "signallength":7, "signaltype":8, "value":9, "offset":10, "factor":11, "rangefrom":12, "rangeto":13, "unit":14, "init":15, "invalid":16, "description":17}
@@ -332,74 +335,123 @@ def getExcelFormat(row_value):
 		str1 = re.sub(rstr, "", row_value[idx]).lower()
 		#print("input: %s"%row_value[idx])
 		#print("re: %s"%str1)
-		findKey = False
+		#findKey = False
 		for key in excelFormat:
 			if str1.find(key) != -1:
 				print("%s:%d"%(key, idx))
 				excelFormat[key] = idx
-				findKey = True
+				#findKey = True
 				break
-		if not findKey:
-			print("no key match: %s"%row_value[idx])
-			sys.exit()
+		#if not findKey:
+		#	print("no key match: %s"%row_value[idx])
+		#	sys.exit()
 	print(excelFormat)
 			
+
+
 				
+# 从excel表中导入CAN协议
+def getCanFrameFromExcel(filename, sheet_offset=0):
+	if len(sys.argv) < 2 or len(sys.argv) > 3:
+		print("usage: %s <**.xls> [sheet offset,default=0]"%sys.argv[0])
+		print("eg1: %s test.xlsx 1"%sys.argv[0])
+		print("eg1: %s test.xlsx"%sys.argv[0])
+		sys.exit()
+	data = xlrd.open_workbook(filename)
+	#sheet_offset = 0 if len(sys.argv) == 2 else int()
+	table = data.sheets()[sheet_offset]
+	nrows = table.nrows 
+	print("excel: nrows = %d"%nrows)
+	start = False
+	canMsg = []
+	cur_msg_idx = 0
+	# 创建一个类列表，数量等于行号
+	for i in range(nrows):
+		canMsg.append(Frame())
+	
+	for i in range(nrows):
+		if i == 0:
+			print(table.row_values(0))
+			getExcelFormat(table.row_values(0))
+			continue
+		if table.cell(i,0).ctype != 0:
+			name   = validateName(table.cell_value(i, excelFormat["framename"]))
+			type   = validateBody(table.cell_value(i, excelFormat["frametype"]))
+			id	   = table.cell_value(i, excelFormat["frameid"])
+			period = table.cell_value(i, excelFormat["period"])
+			length = table.cell_value(i, excelFormat["framelength"])
+			canMsg[cur_msg_idx].setFrame(name = name, type = type, id = id, period = period, length = length)
+	
+		sig_name = validateName(table.cell_value(i, excelFormat["signalname"]))
+		if sig_name == '':
+			continue
+	
+		sig_meaning = str(table.cell_value(i, excelFormat["value"])).replace("\n", ";").lower()
+		sig_start_bit = table.cell_value(i, excelFormat["startbit"])
+		sig_length = table.cell_value(i, excelFormat["signallength"])
+		sig_type = validateBody(table.cell_value(i, excelFormat["signaltype"]))
+		factor = str(table.cell_value(i, excelFormat["factor"])).lower()	# 先只设置为字符串类型
+		offset = str(table.cell_value(i, excelFormat["offset"])).lower()
+		rangefrom = str(table.cell_value(i, excelFormat["rangefrom"])).lower()
+		rangeto = str(table.cell_value(i, excelFormat["rangeto"])).lower()
+		init = str(table.cell_value(i, excelFormat["init"])).lower()
+		invalid = str(table.cell_value(i, excelFormat["invalid"])).lower()
+		sig_comment = '' #str(table.cell_value(i, excelFormat["description"]).strip().replace('\n', ';'))
+		canMsg[cur_msg_idx].setSignal(name = sig_name, meaning = sig_meaning, start_bit = sig_start_bit, length = sig_length, type = sig_type, factor = factor, offset = offset, rangefrom = rangefrom, rangeto = rangeto, init = init, invalid = invalid, comment = sig_comment)
+	
+		if (i+1) == nrows:	#一组数据组装完成
+			print("采集到第%d帧报文"%(cur_msg_idx))
+			cur_msg_idx += 1
+			break
+		if table.cell(i+1,0).ctype != 0:
+			print("采集到第%d帧报文"%(cur_msg_idx))
+			cur_msg_idx += 1
+
+	return canMsg[:cur_msg_idx]
+	
 
 
 
-if len(sys.argv) != 2:
-	print("usage: %s [**.xls]")
-	sys.exit()
-data = xlrd.open_workbook(sys.argv[1])
-table = data.sheets()[0]
-nrows = table.nrows 
-print("excel: nrows = %d"%nrows)
-start = False
-canMsg = []
-cur_msg_idx = 0
-# 创建一个类列表，数量等于行号
-for i in range(nrows):
-	canMsg.append(Frame())
 
-for i in range(nrows):
-	if i == 0:
-		print(table.row_values(0))
-		getExcelFormat(table.row_values(0))
-		continue
-	if table.cell(i,0).ctype != 0:
-		name   = table.cell_value(i, excelFormat["framename"])
-		type   = validateBody(table.cell_value(i, excelFormat["frametype"]))
-		id	   = table.cell_value(i, excelFormat["frameid"])
-		period = table.cell_value(i, excelFormat["period"])
-		length = table.cell_value(i, excelFormat["framelength"])
-		canMsg[cur_msg_idx].setFrame(name = name, type = type, id = id, period = period, length = length)
 
-	sig_name = validateTitle(table.cell_value(i, excelFormat["signalname"]))
-	if sig_name == '':
-		continue
 
-	sig_meaning = str(table.cell_value(i, excelFormat["value"])).replace("\n", ";")
-	sig_start_bit = table.cell_value(i, excelFormat["startbit"])
-	sig_length = table.cell_value(i, excelFormat["signallength"])
-	sig_type = validateBody(table.cell_value(i, excelFormat["signaltype"]))
-	factor = str(table.cell_value(i, excelFormat["factor"]))	# 先只设置为字符串类型
-	offset = str(table.cell_value(i, excelFormat["offset"]))
-	rangefrom = str(table.cell_value(i, excelFormat["rangefrom"]))
-	rangeto = str(table.cell_value(i, excelFormat["rangeto"]))
-	init = str(table.cell_value(i, excelFormat["init"]))
-	invalid = str(table.cell_value(i, excelFormat["invalid"]))
-	sig_comment = '' #str(table.cell_value(i, excelFormat["description"]).strip().replace('\n', ';'))
-	canMsg[cur_msg_idx].setSignal(name = sig_name, meaning = sig_meaning, start_bit = sig_start_bit, length = sig_length, type = sig_type, factor = factor, offset = offset, rangefrom = rangefrom, rangeto = rangeto, init = init, invalid = invalid, comment = sig_comment)
+# 从DBC文件中获取CAN信息
+def getCanFrameFromDBC(filename):
+	with open(filename, 'r') as fl:
+		for line in fl.readlines():
+			if re.match("BO_ ", line):
+				frame = line.split()
+				print("id=%x, name=%s, length=%d, transmiter=%s"%(int(frame[1]), frame[2].strip(":"), int(frame[3]), frame[4]))
+			#if line.find("BO_") >= 0 or line.find("SG_") >= 0:
+			#if re.match("BO_", line) or line.find(" SG_ ") >= 0:
+			#	print(line)
+		#line = fl.readline()
+		#print(line)
 
-	if (i+1) == nrows:	#一组数据组装完成
-		print("采集到第%d帧报文"%(cur_msg_idx))
-		cur_msg_idx += 1
-		break
-	if table.cell(i+1,0).ctype != 0:
-		print("采集到第%d帧报文"%(cur_msg_idx))
-		cur_msg_idx += 1
-		
+
+getCanFrameFromDBC(sys.argv[1])
+
+sys.exit()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 file_clear_flag = False
 def WriteData2File(data):
@@ -408,23 +460,32 @@ def WriteData2File(data):
 		file_clear_flag = True
 		with open('do_process_rsq.cpp', 'w+') as file:
 			file.write(data)
+			file.flush()
 			file.close()
 	else:
 		with open('do_process_rsq.cpp', 'a+') as file:
 			file.write(data)
+			file.flush()
 			file.close()
 
+if len(sys.argv) < 2 or len(sys.argv) > 3:
+	print("usage: %s <**.xls> [sheet offset,default=0]"%sys.argv[0])
+	print("eg1: %s test.xlsx 1"%sys.argv[0])
+	print("eg1: %s test.xlsx"%sys.argv[0])
+	sys.exit()
+excelfile = sys.argv[1]
+sheet_offset = 0 if len(sys.argv) == 2 else sys.argv[2]
+canMsg = getCanFrameFromExcel(excelfile, sheet_offset)
+	
 
 WriteData2File(temp_string.fl_head_string)
 cans_frame_str = ''
 canr_frame_str = ''
 
-for idx in range(cur_msg_idx):
-	#global cans_frame_str
-	#global canr_frame_str
+print("length=%d"%len(canMsg))
+
+for idx in range(len(canMsg)):
 	print("处理第%d帧报文"%idx)
-	#canMsg[idx].printFrame()
-	#canMsg[idx].printSignal()
 	canMsg[idx].setFrameStructStr()
 	frameStr = canMsg[idx].getFrameStructStr()
 	if canMsg[idx].type == 's':
