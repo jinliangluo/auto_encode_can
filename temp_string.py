@@ -26,7 +26,7 @@ cb_partmatch_head='''
 	} B${START_BYTE}${END_BYTE};'''
 
 cb_frame_tmp = '''
-// id:${CANID} period:$PERIOD
+// id:${CANID} $PERIOD $COMMENT
 struct can${RDWR}_${NAME} {$FRAME_BODY	
 }__attribute__((packed));
 '''
@@ -53,9 +53,9 @@ fl_head_string = '''// Copyright (C) 2019 - Minieye INC.
 #include "unified_process_rsp.h"
 
 
-#define PERIOD_SLEEP_MS		50		//每次循环睡眠50ms
-#define CAN_DEVICE			"can0"	// 根据实际产品定义CAN通道
-#define ENABLE_SEPARATE_SEND		0	// 是否独立一个线程发送CAN报文
+#define CAN_DEVICE				"can0"	// 根据实际产品定义CAN通道
+#define PERIOD_SLEEP_MS			50		// 每次循环睡眠50ms
+#define ENABLE_SEPARATE_SEND	0		// 是否独立一个线程发送CAN报文
 
 
 #define min(x, y)			((x) > (y) ? (y) : (x))		// 取较小值

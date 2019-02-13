@@ -53,13 +53,19 @@ VAL_TABLE_ HMW_Detect_Warn 2 "reserve" 1 "warning" 0 "no warning" ;
 VAL_TABLE_ FrontCar_Status 2 "reserve" 1 "Detect the front car" 0 "Not detect car" ;
 
 
-BO_ 2432593896 C8_1: 8 Vector__XXX
- SG_ FrontCarSpeed : 0|8@1+ (1,0) [0|250] "" Vector__XXX
- SG_ FrontCarHWM : 8|8@1+ (1,0) [0|250] "" Vector__XXX
- SG_ FrontCar_Status : 48|2@1+ (1,0) [0|3] "" Vector__XXX
- SG_ HMW_Detect_Warn : 52|2@1+ (1,0) [0|3] "" Vector__XXX
+BO_ 1 New_Message_6: 8 Vector__XXX
+ SG_ New_Signal_23 : 15|8@1+ (1,0) [0|0] "" Vector__XXX
 
-BO_ 2566806504 C8_2: 8 Vector__XXX
+BO_ 0 New_Message_5: 8 Vector__XXX
+ SG_ New_Signal_22 : 8|8@1+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 2432593896 C8_1: 8 ADAS
+ SG_ FrontCarSpeed : 0|8@1+ (1,0) [0|250] "" Vector__XXX
+ SG_ FrontCarHWM : 8|1@1- (2,1) [0|250] "sec" Vector__XXX
+ SG_ FrontCar_Status : 48|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ HMW_Detect_Warn : 52|2@1+ (1,0) [0|3] "2"  Minieye
+
+BO_ 2566806504 C8_2: 8 Minieye
  SG_ Rlane_Detect : 2|2@1+ (1,0) [0|1] "" Vector__XXX
  SG_ Llane_Detect : 4|2@1+ (1,0) [0|1] "" Vector__XXX
  SG_ LDW_Status : 6|1@1+ (1,0) [0|1] "" Vector__XXX
@@ -73,6 +79,7 @@ BO_ 2566806504 C8_2: 8 Vector__XXX
  SG_ TSR_speed : 42|5@1+ (5,0) [0|120] "" Vector__XXX
 
 BO_ 2431649768 C8_3: 8 Vector__XXX
+ SG_ test_value : 32|32@1- (1,0) [-3.4E+038|3.4E+038] "sec" Vector__XXX
  SG_ FCW_Status : 8|1@1+ (1,0) [0|1] "" Vector__XXX
  SG_ LLDW_Warn : 6|1@1+ (1,0) [0|1] "" Vector__XXX
  SG_ RLDW_Warn : 4|1@1+ (1,0) [0|1] "" Vector__XXX
@@ -84,6 +91,7 @@ BO_ 419351272 C8_4: 8 Vector__XXX
 
 
 
+CM_ SG_ 2431649768 test_value "just for test";
 VAL_ 2432593896 FrontCar_Status 2 "reserve" 1 "Detect the front car" 0 "Not detect car" ;
 VAL_ 2432593896 HMW_Detect_Warn 2 "reserve" 1 "warning" 0 "no warning" ;
 VAL_ 2566806504 Rlane_Detect 2 "reserve" 1 "detect" 0 "no detect" ;
@@ -101,4 +109,5 @@ VAL_ 2431649768 RLDW_Warn 1 "warning" 0 "no warning" ;
 VAL_ 2431649768 HWM_Warn 1 "warning" 0 "no warning" ;
 VAL_ 2431649768 Overspeed_Warn 1 "warning" 0 "no warning" ;
 VAL_ 419351272 System_Status 3 "reserve" 2 "reserve" 1 "System fault" 0 "System normal" ;
+SIG_VALTYPE_ 2431649768 test_value : 1;
 

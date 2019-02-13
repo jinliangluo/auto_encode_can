@@ -122,26 +122,25 @@ def getFrameFormat():
 
 
 class Frame:
-	def __init__(self, name = '', id = 0, period = 1000, length = 8, type = 's'):
-		#print("%s***********************"%sys._getframe().f_code.co_name)
+	def __init__(self, name = '', id = 0, period = 0, length = 8, type = 's', comment=''):
 		self.name = name
 		self.id = id
 		self.period = period
 		self.length = length
 		self.type = type
+		self.comment = comment
 		self.signals = []
 		
-	def setFrame(self, name = '', type='s', id = 0, period = 1000, length = 8):
-		#print("%s***********************"%sys._getframe().f_code.co_name)
+	def setFrame(self, name = '', type='x', id = 0, period = 0, length = 8, comment = ''):
 		self.name = name
 		self.id = id
 		self.type = type
 		self.period = period
 		self.length = length
+		self.comment = comment
 	
 	# 将从excel表中获取一行信号的内容插入到self.signals中，按照start_bit值从小到大排列
-	def setSignal(self, name, meaning = '', start_bit = 0, length = 1, type = "unsigned", factor = 1, offset = 1, rangefrom = 0, rangeto = 0, init = 0, invalid = 0, unit = '', comment = ''):
-		#print("%s, length 0f signals = %d***********************"%(sys._getframe().f_code.co_name, len(self.signals)))
+	def setSignal(self, name, meaning = '', start_bit = 0, length = 1, type = "unsigned", factor = 1, offset = 1, rangefrom = 0, rangeto = 0, init = 0, invalid = '', unit = '', comment = ''):
 		insert_off = 0
 		for i in range(len(self.signals)):
 			if start_bit > self.signals[i]["start_bit"]:
@@ -152,7 +151,6 @@ class Frame:
 
 
 	def getsignal(self, offset):
-		#print("%s***********************"%sys._getframe().f_code.co_name)
 		if offset <= len(self.signals):
 			return self.signals[offset]
 		else:
@@ -160,7 +158,6 @@ class Frame:
 			return {}
 	
 	def printFrame(self):
-		#print("%s***********************"%sys._getframe().f_code.co_name)
 		print("id=%s,name=%s,period=%s"%(self.id, self.name, self.period))
 
 	def printSignal(self):
@@ -192,8 +189,7 @@ class Frame:
 					break
 
 			if not need_next_ff:
-				print("match frameFormat: %s"%ff)
-				#print(ff)
+				#print("match frameFormat: %s"%ff)
 				return ff
 
 		
@@ -218,7 +214,6 @@ class Frame:
 			else:
 				cur_pos += sig["length"]
 		
-		#print("message correct, id=%s"%self.id)
 		# 确定数据符合的模型
 		frameFormats = getFrameFormat()
 		matched_format = self.getMatchedFormat(frameFormats)
@@ -251,15 +246,13 @@ class Frame:
 					continue
 				if sig_data_start > (fmt_start_bit+fmt_cur_offset): # 模型单元中，本信号前还有预留的数据区
 					#print("填充报文前的预留数据")
-					#strTmp = Template(temp_string.cb_partmatch_reserved)
 					strTmp = Template(temp_string.cb_partmatch_reserved_none)
 					data_type = "uint" + str(int(sig_format * 8)) + "_t"
 					start_bit = int(fmt_cur_offset)
 					end_bit = (sig_data_start - 1)
 					start_bit_str = str(fmt_cur_offset)#str(start_bit - fmt_start_bit)
 					end_bit_str = str(end_bit - fmt_start_bit) if (end_bit - start_bit) > 1 else ''
-					#formatStr = strTmp.substitute(DATA_TYPE=data_type, START_BIT=start_bit_str, END_BIT=end_bit_str, DATA_LENGTH=str(sig_data_start - fmt_cur_offset))
-					formatStr = strTmp.substitute(DATA_TYPE=data_type, DATA_LENGTH=str(sig_data_start - fmt_cur_offset))
+					formatStr = strTmp.substitute(DATA_TYPE=data_type, DATA_LENGTH= str(sig_data_start - fmt_start_bit))#str(sig_data_start - fmt_cur_offset))
 					fmt_body_str += formatStr
 					fmt_cur_offset = sig_data_start - fmt_start_bit
 
@@ -267,16 +260,7 @@ class Frame:
 				if sig_data_start == fmt_start_bit and sig_data_end == fmt_end_bit:     #模型单元刚好被这一个信号填充完
 					#print("刚好填充一个信号")
 					strTmp = Template(temp_string.cb_fullmatch_temp)
-					#data_type = getDataTypeStr(sig, sig_format * 8)
-					#invalid = "invalid:" + sig["invalid"] + '; ' if sig["invalid"] != '' else ''
-					#factor = "factor:" + sig["factor"] + '; ' if sig["factor"] != '' else ''
-					#offset = "offset:" + sig["offset"] + '; ' if sig["offset"] != '' else ''
-					#unit = "unit:" + sig["unit"] + ';' if sig["unit"] != '' else ''
-					#meaning = "value:" + sig["meaning"] + '; ' if sig["meaning"] != '' else ''
-					#desc = "description:" + sig["comment"] + '; ' if sig["comment"] != '' else ''
-
 					formatStr = strTmp.substitute(DATA_TYPE = data_type, DATA_NAME = sig["name"], MIN_VAL=sig["rangefrom"], MAX_VAL=sig["rangeto"], INVALID=invalid, FACTOR=factor, OFFSET=offset, UNIT=unit, MEANING=meaning, DESCRIPTION=desc)
-					#print(sig["comment"])
 					fmt_body_str += formatStr
 					fmt_cur_offset = sig_format * 8
 					#break   # 模型单元被填充完后不会有其他信号处于该模型单元内
@@ -295,13 +279,11 @@ class Frame:
 					strTmp = Template(temp_string.cb_fullmatch_reserved)
 					data_type = "uint" + str(int(sig_format * 8)) + "_t"
 					start_byte_str = str(int(fmt_start_bit/8))
-					#end_byte_str = str(int(fmt_start_bit/8 + sig_format)) if sig_format > 1 else ''
 					end_byte_str = str(int(fmt_start_bit/8 + sig_format) - 1) if sig_format != 1 else ''
 					formatStr = strTmp.substitute(DATA_TYPE=data_type, START_BYTE=start_byte_str, END_BYTE=end_byte_str)
 					fmt_body_str += formatStr
 				else:     
 					#print("填充本模型单元尾部的预留区域")
-					#strTmp = Template(temp_string.cb_partmatch_reserved)
 					strTmp = Template(temp_string.cb_partmatch_reserved_none)
 					data_type = "uint" + str(int(sig_format * 8)) + "_t"
 					start_bit = int(fmt_cur_offset)
@@ -322,8 +304,8 @@ class Frame:
 			fmt_start_bit += sig_format * 8 # 设置模型处理的下一个单元的起始地址
 
 		frame_str_temp = Template(temp_string.cb_frame_tmp)
-		#self.frameStructStr = frame_str_temp.substitute(RDWR=self.type, CANID=str(self.id), FRAME_BODY = fmts_str)
-		self.frameStructStr = frame_str_temp.substitute(RDWR=self.type, CANID=str(self.id), PERIOD=int(self.period), NAME=self.name, FRAME_BODY = fmts_str)
+		prd_str = self.period if self.period != 0 else ''
+		self.frameStructStr = frame_str_temp.substitute(RDWR=self.type, CANID=str(self.id), PERIOD=prd_str, COMMENT=self.comment, NAME=self.name, FRAME_BODY = fmts_str)
 	
 
 excelFormat = {"framename":0, "frametype":1, "frameid":2, "period":3, "framelength":4, "signalname":5, "startbit":6, "signallength":7, "signaltype":8, "value":9, "offset":10, "factor":11, "rangefrom":12, "rangeto":13, "unit":14, "init":15, "invalid":16, "description":17}
@@ -333,18 +315,11 @@ def getExcelFormat(row_value):
 	rstr = r"[\=\(\)\,\/\\\:\*\?\"\<\>\|\' '_]" # '= ( ) ， / \ : * ? " < > |  '   还有空格 
 	for idx in range(len(row_value)):
 		str1 = re.sub(rstr, "", row_value[idx]).lower()
-		#print("input: %s"%row_value[idx])
-		#print("re: %s"%str1)
-		#findKey = False
 		for key in excelFormat:
 			if str1.find(key) != -1:
 				print("%s:%d"%(key, idx))
 				excelFormat[key] = idx
-				#findKey = True
 				break
-		#if not findKey:
-		#	print("no key match: %s"%row_value[idx])
-		#	sys.exit()
 	print(excelFormat)
 			
 
@@ -358,7 +333,6 @@ def getCanFrameFromExcel(filename, sheet_offset=0):
 		print("eg1: %s test.xlsx"%sys.argv[0])
 		sys.exit()
 	data = xlrd.open_workbook(filename)
-	#sheet_offset = 0 if len(sys.argv) == 2 else int()
 	table = data.sheets()[sheet_offset]
 	nrows = table.nrows 
 	print("excel: nrows = %d"%nrows)
@@ -400,117 +374,176 @@ def getCanFrameFromExcel(filename, sheet_offset=0):
 		canMsg[cur_msg_idx].setSignal(name = sig_name, meaning = sig_meaning, start_bit = sig_start_bit, length = sig_length, type = sig_type, factor = factor, offset = offset, rangefrom = rangefrom, rangeto = rangeto, init = init, invalid = invalid, comment = sig_comment)
 	
 		if (i+1) == nrows:	#一组数据组装完成
-			print("采集到第%d帧报文"%(cur_msg_idx))
+			#print("采集到第%d帧报文"%(cur_msg_idx))
 			cur_msg_idx += 1
 			break
 		if table.cell(i+1,0).ctype != 0:
-			print("采集到第%d帧报文"%(cur_msg_idx))
+			#print("采集到第%d帧报文"%(cur_msg_idx))
 			cur_msg_idx += 1
-
+	print("find frame: %d"%cur_msg_idx)
 	return canMsg[:cur_msg_idx]
 	
 
 
-
-
-
-
-# 从DBC文件中获取CAN信息
-def getCanFrameFromDBC(filename):
+# 从DBC文件中导入CAN协议
+def getCanFrameFromDbc(filename, module = ''):
 	with open(filename, 'r') as fl:
-		for line in fl.readlines():
-			if re.match("BO_ ", line):
-				frame = line.split()
-				print("id=%x, name=%s, length=%d, transmiter=%s"%(int(frame[1]), frame[2].strip(":"), int(frame[3]), frame[4]))
-			#if line.find("BO_") >= 0 or line.find("SG_") >= 0:
-			#if re.match("BO_", line) or line.find(" SG_ ") >= 0:
-			#	print(line)
-		#line = fl.readline()
-		#print(line)
+		canMsg = []
+		lines = fl.readlines()
+		frameCnt = 0
+		signalCnt = 0
+		for idx in range(len(lines)):
+			if re.match("BO_ ", lines[idx]) and lines[idx].find("INDEPENDENT_SIG_MSG") < 0:
+				if lines[idx+1].strip() == '':
+					print("filter reserved message: %s"%lines[idx])
+					continue
+				frameCnt += 1
+				canMsg.append(Frame())
+				frame = lines[idx].split()
+				type = 'x'
+				if module != '':
+					type = 's' if frame[4].find(module) >= 0 else 'r'
+				comment = ''
+				for i in range(len(lines)):
+					if lines[i].find("CM_ BO_")>=0 and lines[i].find(frame[1]) > 0:
+						comment = ''.join(re.findall(".*\"(.*)\"", lines[i]))
+						break
+				#print("\n\nfind a frame:id=%x, name=%s, length=%d, transmiter=%s"%(int(frame[1]), frame[2].strip(":"), int(frame[3]), frame[4]))
+				canMsg[-1].setFrame(name = frame[2].strip(":"), type = type, id = str(hex(int(frame[1]))), comment=comment, length = int(frame[3]))
+
+				for tmp in range(idx+1, len(lines)):
+					if lines[tmp].find("SG_") < 0:
+						break
+					signalCnt += 1
+					signal = lines[tmp].split()
+					#print(signal)
+					sig_name = signal[1]
+					sig_start_bit = int(signal[3][0:signal[3].find('|')])
+					sig_length = int(''.join(re.findall(".*\|(.*)@.*", signal[3])))
+					order = "inter" if signal[3][-2] == '0' else "motorlora"
+					sig_type = "unsigned" if signal[3][-1] == '+' else "signed" 
+					if signal[3][-1] == '-':
+						for i in range(len(lines)):
+							if re.match("SIG_VALTYPE", lines[i]):
+								type_tmp = lines[i].split()
+								if type_tmp[1] == frame[1] and type_tmp[2] == signal[1]:
+									if type_tmp[4][0] == '1':
+										sig_type = "float"
+									else:
+										sig_type = "double"
+					factor = ''.join(re.findall("\((.*),.*", signal[4]))
+					offset = ''.join(re.findall(".*,(.*)\)", signal[4]))
+					rangefrom = ''.join(re.findall("\[(.*)\|.*", signal[5]))
+					rangeto   = ''.join(re.findall(".*\|(.*)\]", signal[5]))
+					init = 0
+					unit = 'none' if len(signal[6]) <= 2 else signal[6][1:-1]
+					sig_meaning = ''
+					for i in range(len(lines)):
+						if re.match("VAL_ ", lines[i]):
+							type_tmp = lines[i].split()
+							if type_tmp[1] == frame[1] and type_tmp[2] == signal[1]:
+								sig_meaning = lines[i][(lines[i].find(type_tmp[2]) + len(type_tmp[2])):].strip().rstrip(';')
+								break
+
+					sig_comment = ''
+					for i in range(len(lines)):
+						if re.match("CM_ SG_", lines[i]):
+							type_tmp = lines[i].split()
+							if type_tmp[2] == frame[1] and type_tmp[3] == signal[1]:
+								sig_comment = ''.join(re.findall(".*\"(.*)\"", lines[i]))
+					#if sig_type.find("signed") >= 0:
+					#	print("signal:name=%s, start_bit=%d, length=%d, order=%s, type=%s, factor=%s, offset=%s,rangefrom=%s,rangeto=%s,init=%d, unit=%s, comment=%s"%(sig_name, sig_start_bit, sig_length, order, sig_type, factor, offset, rangefrom, rangeto, init, unit, sig_comment))
+					#else:
+					#	print("signal:name=%s, start_bit=%d, length=%d, order=%s, type=%s, factor=%s, offset=%s,rangefrom=%s,rangeto=%s,init=%f, unit=%s, comment=%s"%(sig_name, sig_start_bit, sig_length, order, sig_type, factor, offset, rangefrom, rangeto, init, unit, sig_comment))
+					canMsg[-1].setSignal(name=sig_name, start_bit=sig_start_bit,length=sig_length, type=sig_type, factor=factor, offset=offset, rangefrom=rangefrom, rangeto=rangeto, init=init, meaning=sig_meaning, comment=sig_comment)
+		print("find frames:%d, with count of signal=%d"%(frameCnt, signalCnt))
+		return canMsg
+						
 
 
-getCanFrameFromDBC(sys.argv[1])
 
-sys.exit()
-
-
-
-
-
-
-
-
-
-
+def InitFile(filename):
+	with open(filename, 'w+') as fl:
+		fl.write('')
+		fl.flush()
+		fl.close()
+def WriteData2File(filename, data):
+	with open(filename, 'a+') as fl:
+		fl.write(data)
+		fl.flush()
+		fl.close()
 
 
+man_help = '''
+## CAN协议转C代码工具说明
 
++ 主要用途： 生成基于某个特定CAN协议的CAN报文结构体（基于C语言），方便后续程序的开发
 
++ 使用方法：
 
+  + 通过DBC文件导入协议： `python3 produce_encode_can.py <DBC file> [module] # module指开发的模块，默认为ADAS`
 
+  + 通过EXCEL文件导入协议：`python3 produce_encode_can.py <excel file> [sheet_offset] # sheet_offset指第几个sheet表，从0开始计算`
+    excel表中需要有以下列
 
+    | frame_name | frame_type | frame_id | period | frame_length | signal_name | start_bit | signal_length | signal_type | factor | offset | Range From | Range To | Initial | invalid | unit | value | description |
+'''
 
-
-
-
-file_clear_flag = False
-def WriteData2File(data):
-	global file_clear_flag
-	if not file_clear_flag:
-		file_clear_flag = True
-		with open('do_process_rsq.cpp', 'w+') as file:
-			file.write(data)
-			file.flush()
-			file.close()
+if __name__ == '__main__':
+	if len(sys.argv) < 2 or len(sys.argv) > 3:
+		print(man_help)
+		sys.exit()
+	filename = 'do_process_rsq.cpp'
+	canMsg = []
+	if sys.argv[1].find(".xls") >= 0:
+		print("get frames information from excel: %s"%sys.argv[1])
+		sheet_offset = 0 if len(sys.argv) == 2 else sys.argv[2]
+		canMsg = getCanFrameFromExcel(sys.argv[1], sheet_offset)
+	elif sys.argv[1].find(".dbc") >= 0:
+		print("get frames information from DBC file: %s"%sys.argv[1])
+		module = 'ADAS' if len(sys.argv) == 2 else sys.argv[2]
+		canMsg = getCanFrameFromDbc(sys.argv[1], module)
 	else:
-		with open('do_process_rsq.cpp', 'a+') as file:
-			file.write(data)
-			file.flush()
-			file.close()
-
-if len(sys.argv) < 2 or len(sys.argv) > 3:
-	print("usage: %s <**.xls> [sheet offset,default=0]"%sys.argv[0])
-	print("eg1: %s test.xlsx 1"%sys.argv[0])
-	print("eg1: %s test.xlsx"%sys.argv[0])
-	sys.exit()
-excelfile = sys.argv[1]
-sheet_offset = 0 if len(sys.argv) == 2 else sys.argv[2]
-canMsg = getCanFrameFromExcel(excelfile, sheet_offset)
+		print("unknow file format, exit")
+		sys.exit()
 	
+	InitFile(filename)
+	WriteData2File(filename, temp_string.fl_head_string)
 
-WriteData2File(temp_string.fl_head_string)
-cans_frame_str = ''
-canr_frame_str = ''
-
-print("length=%d"%len(canMsg))
-
-for idx in range(len(canMsg)):
-	print("处理第%d帧报文"%idx)
-	canMsg[idx].setFrameStructStr()
-	frameStr = canMsg[idx].getFrameStructStr()
-	if canMsg[idx].type == 's':
-		cans_frame_str += frameStr
-	else:
-		canr_frame_str += frameStr
-
-if cans_frame_str != '':
-	cans_comment='''
+	cans_frame_str = ''
+	canr_frame_str = ''
+	print("deal can protocol...")
+	print("")
+	for idx in range(len(canMsg)):
+		print("deal %d... frame id=%s\r"%(idx+1, canMsg[idx].id), end='')
+		canMsg[idx].setFrameStructStr()
+		frameStr = canMsg[idx].getFrameStructStr()
+		if canMsg[idx].type == 's':
+			cans_frame_str += frameStr
+		else:
+			canr_frame_str += frameStr
+	
+	if cans_frame_str != '':
+		cans_comment='''
 /**************************************** CAN send frame ****************************************/'''
-	WriteData2File(cans_comment)
-	WriteData2File(cans_frame_str)
-
-if canr_frame_str != '':
-	canr_comment='''
+		WriteData2File(filename, cans_comment)
+		WriteData2File(filename, cans_frame_str)
+	
+	if canr_frame_str != '':
+		canr_comment='''
 /************************************* CAN receive frame *************************************/'''
-	WriteData2File(canr_comment)
-	WriteData2File(canr_frame_str)
-
-func_comment='''
-
+		WriteData2File(filename, canr_comment)
+		WriteData2File(filename, canr_frame_str)
+	
+	func_comment='''
+	
 /********************************** detected dataes process **********************************/
 '''
-WriteData2File(func_comment)
-WriteData2File(temp_string.func_lds_temp)
-WriteData2File(temp_string.func_vds_temp)
-WriteData2File(temp_string.func_pds_temp)
-WriteData2File(temp_string.func_tds_temp)
+	WriteData2File(filename, func_comment)
+	WriteData2File(filename, temp_string.func_lds_temp)
+	WriteData2File(filename, temp_string.func_vds_temp)
+	WriteData2File(filename, temp_string.func_pds_temp)
+	WriteData2File(filename, temp_string.func_tds_temp)
+	
+	print("\nfinish, create file: %s"%filename)
+	sys.exit()
