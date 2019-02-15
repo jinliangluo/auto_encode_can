@@ -53,10 +53,10 @@ fl_head_string = '''// Copyright (C) 2019 - Minieye INC.
 #include "unified_process_rsp.h"
 
 
-#define CAN_DEVICE				"can0"	// 根据实际产品定义CAN通道
-#define PERIOD_SLEEP_MS			50		// 每次循环睡眠50ms
+#define CAN_DEVICE				"${CAN_CHANNEL}"	// 根据实际产品定义CAN通道
+#define PERIOD_SLEEP_MS			${PERIOD_TIME}		// 每次循环睡眠50ms
 #define ENABLE_SEPARATE_SEND	0		// 是否独立一个线程发送CAN报文
-
+$MACRO_CANSEND
 
 #define min(x, y)			((x) > (y) ? (y) : (x))		// 取较小值
 #define max(x, y)			((x) > (y) ? (x) : (y))		// 取较大值
@@ -68,6 +68,31 @@ DECLARE_double(ldw_speed_thresh);
 
 
 '''
+
+can_send_msg_temp='''
+	{.id = $ID, .type = PERIOD, .delay = $DELAY,  .msg = (uint8_t*)&$MSG, .len = $LEN},'''
+
+can_send_temp='''
+
+/***************************** CAN发送数据相关变量 **************************/
+enum CAN_PACKET_TYPE{EVENT = 0, PERIOD, EVENT_PERIOD};
+struct can_transmint_type_t{
+	uint32_t id;		// CAN id
+	uint8_t type;		// 0=事件型, 1=周期型, 2=事件周期型
+	uint32_t delay;		// 事件型or周期型每帧之间的延时
+	uint8_t *msg;		// CAN数据缓存
+	uint8_t len;		// 缓存区大小
+	uint32_t delay_ev;	// 事件周期型中，事件触发后的延时
+	uint8_t event_nums;	// 事件周期型中，事件触发后，以事件型延时发送的报文次数
+};
+
+// CAN 发送数据相关信息
+struct can_transmint_type_t can_transmit_id_list[NUM_OF_SEND_ID]={
+	/* 如果为周期型，只需要填充 */
+	/* id   帧类型  周期延时  事件延时   事件CAN帧数   发送BUFF */$FRAME_LIST
+};
+'''
+
 
 func_lds_temp = '''
 void do_lane_detect_rsp(struct LaneDetectRsp_all *lds) {
@@ -271,61 +296,153 @@ static void can_transmit(uint32_t id, uint8_t *data, uint8_t len)
 
 '''
 
+func_time_init_temp='''
+/*************************** 定时器 ***************************/
+int tmfd_50ms = -1;
+
+void timerfd_handler(int fd) {
+    struct timeval tv1, tv2;
+    uint64_t exp = 0;
+    int ret = read(fd, &exp, sizeof(uint64_t));
+    return;
+}
+void sleep_period_ms(int tmfd) { timerfd_handler(tmfd); }
+
+int timerfd_init(int delay) {
+    int tmfd;
+    int ret;
+    struct itimerspec new_value;
+	
+	if (delay <= 0)
+	{
+		return -1;
+	}
+
+    tmfd = timerfd_create(CLOCK_REALTIME, 0);
+    if (tmfd < 0) {
+        return -1;
+    }
+
+    struct timespec now;
+    if (clock_gettime(CLOCK_REALTIME, &now) == -1) {
+        assert(0);
+    }
+
+    new_value.it_value.tv_sec = now.tv_sec + 1;
+    new_value.it_value.tv_nsec = now.tv_nsec;
+    new_value.it_interval.tv_sec = 0;
+    new_value.it_interval.tv_nsec = delay * 1000 * 1000;
+
+    ret = timerfd_settime(tmfd, TFD_TIMER_ABSTIME, &new_value, NULL);
+    if (ret < 0) {
+        close(tmfd);
+        return -1;
+    }
+
+    return tmfd;
+}
+'''
+
+func_dev_init_loopback_temp = '''
+	// 本地回环功能是默认开启的，此处关闭CAN发送回环功能
+	int loopback = 0;	
+	if (0 > setsockopt(can_fd, SOL_CAN_RAW, CAN_RAW_LOOPBACK, &loopback, sizeof(loopback)))
+	{
+		LOG_UPR("setsockopt, disable loopback function failed\\n");
+		close(can_fd);
+		return -1;
+	}
+'''
+
+func_dev_init_enablereceive_temp='''
+	// 创建CAN接收线程
+	pthread_t pth_can_rcv;
+	int err = pthread_create(&pth_can_rcv, NULL, can_rcv_thread, NULL);
+	if (err != 0)
+	{
+		LOG_UPR("pthread_create can_rcv_thread failed, error = %d\\n", err);
+		return -1;
+	}
+'''
+
+
+func_dev_init_disablereceive_temp='''
+	// 屏蔽CAN接收功能，不接收任何CAN报文
+	if (0 > setsockopt(can_fd, SOL_CAN_RAW, CAN_RAW_FILTER, NULL, 0)) {
+		LOG_UPR("setsockopt");
+		close(can_fd);
+		return -1;
+	}
+'''
+
+func_dev_init_send_split_temp='''
+	// 创建CAN发送线程
+	pthread_t pth_can_send;
+	if (0 > pthread_create(&pth_can_send, NULL, can_send_thread, NULL)){
+		close(can_fd);
+		LOG_UPR("create can_rcv_thread failed\\n");
+		return -1;
+	}
+'''
+
 func_dev_init_temp = '''
+
 /* 初始化CAN设备 */
+int can_fd = -1;
+
 static int can_dev_init(const char *dev)
 {
 	struct ifreq ifr;
 	struct sockaddr_can addr;
 
-	int fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
-	if (fd < 0){
-		LOG_UPR("socket");
+	can_fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
+	if (can_fd < 0){
+		LOG_UPR("socket failed\\n");
 		return -1;
 	}
 
 	strcpy(ifr.ifr_name, dev);
-	if (0 > ioctl(fd, SIOCGIFINDEX, &ifr)){
+	if (0 > ioctl(can_fd, SIOCGIFINDEX, &ifr)){
 		LOG_UPR("ioctl, err=%s\\n", strerror(errno));
  		return -1;
 	}
 
 	addr.can_family = AF_CAN;
 	addr.can_ifindex = ifr.ifr_ifindex;
-	if (0 > bind(fd, (struct sockaddr *)&addr, sizeof(addr))){
-		LOG_UPR("bind");
-		close(fd);
+	if (0 > bind(can_fd, (struct sockaddr *)&addr, sizeof(addr))){
+		LOG_UPR("bind failed\\n");
+		close(can_fd);
 		return -1;
 	}
 
-	if (0 > setsockopt(fd, SOL_CAN_RAW, CAN_RAW_FILTER, NULL, 0)) {
-		LOG_UPR("setsockopt");
-		close(fd);
-		return -1;
-	}
-#if 1
-	int loopback = 0;	// 本地回环功能是默认开启的，此模块发送的报文太多，开启此功能可能会影响系统负载，此处关闭CAN回环
-	if (0 > setsockopt(fd, SOL_CAN_RAW, CAN_RAW_LOOPBACK, &loopback, sizeof(loopback)))
+	// 初始化CAN发送定时器（精确延时）
+	tmfd_50ms = timerfd_init(PERIOD_SLEEP_MS);
+	if (tmfd_50ms < 0)
 	{
-		LOG_UPR("setsockopt, disable loopback function failed\\n");
-		close(fd);
+		LOG_UPR("init timefd faile\\n");
+		close(can_fd);
 		return -1;
 	}
-#endif	
-  if (0 > pthread_create(&pth_can_send, NULL, can_send_thread, &fd)){
-    close(fd);
-    LOG_UPR("create can_rcv_thread failed\\n");
-    return -1;
-  }
-  
-	return fd;
+${CAN_LOOPBACK}${CAN_RCV_INIT}${CAN_SEND_SPLIT}
+	return 0;
 }
 
 
 '''
 
-func_init_temp = '''
-pthread_mutex_t mutex_can_send;
-int can_fd = -1;
-pthread_t pth_can_send;
+func_can_rcv_temp='''
+void *can_rcv_thread(void *arg)
+{
+	struct can_frame fr;
+
+	pthread_detach(pthread_self());
+	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+	while (1)
+	{
+		if (0 < read(can_fd, &fr, sizeof(fr)))
+		{
+			// TODO
+		}
+	}
+}
 '''

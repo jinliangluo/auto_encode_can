@@ -1,0 +1,9 @@
+--channel=can1
+--circle_period=50
+--proto_file=liuqi_dflzm_20190212.dbc
+--output_file=do_process_rsq.cpp
+--node_name=ADAS
+--enable_receive=True
+--enable_loopback=False
+--enable_valueTable=True
+--enable_comment=False

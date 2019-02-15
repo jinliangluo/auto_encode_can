@@ -2,11 +2,26 @@
 
 import xlrd
 import sys
+import os
 import re
+import gflags
 from string import Template
 
 import temp_string
 
+Flags = gflags.FLAGS
+
+gflags.DEFINE_string('channel', 'can0', 'using can channel')  
+gflags.DEFINE_string('proto_file', 'example.dbc', 'can protocol file, valid format: .xlsx .dbc')  
+gflags.DEFINE_integer('sheet_numb', 0, 'if protocol file is a excel file, this flag mean which sheet in file')  
+gflags.DEFINE_integer('circle_period', 50, 'can transmit thread running period')  
+gflags.DEFINE_string('node_name', 'ADAS', 'network node name')  
+gflags.DEFINE_string('output_file', 'do_process_rsq.cpp', 'output file name')  
+gflags.DEFINE_boolean('enable_receive', False, 'if enable can receive') 
+gflags.DEFINE_boolean('enable_sendSplit', False, 'if create thread for can send') 
+gflags.DEFINE_boolean('enable_loopback', True, 'if enable can loopback function') 
+gflags.DEFINE_boolean('enable_valueTable', True, 'if output signal value table') 
+gflags.DEFINE_boolean('enable_comment', True, 'if output signal comment') 
 
 
 
@@ -150,23 +165,7 @@ class Frame:
 		self.signals.insert(insert_off, {"name":name, "meaning":meaning, "start_bit":start_bit, "length":length, "type":type, "factor":factor, "offset":offset, "rangefrom":rangefrom, "rangeto":rangeto, "init":init,"invalid":invalid, "unit":unit, "comment":comment})
 
 
-	def getsignal(self, offset):
-		if offset <= len(self.signals):
-			return self.signals[offset]
-		else:
-			print("req_offset:%d, signal_size:%d"%(offset, len(self.signals)))
-			return {}
-	
-	def printFrame(self):
-		print("id=%s,name=%s,period=%s"%(self.id, self.name, self.period))
-
-	def printSignal(self):
-		print("%s***********************"%sys._getframe().f_code.co_name)
-		print("count of signal:%d"%len(self.signals))
-		for sig in self.signals:
-			print(sig)
-			print('')	# 输出空行
-
+	# 从所有的数据模型中获取本组信号匹配的模型
 	def getMatchedFormat(self, frameFormats):
 		for ff in frameFormats:
 			need_next_ff = False
@@ -189,12 +188,19 @@ class Frame:
 					break
 
 			if not need_next_ff:
-				#print("match frameFormat: %s"%ff)
 				return ff
+			return []
 
 		
 	def getFrameStructStr(self):
 		return self.frameStructStr
+	
+	def getSendFrameInfo(self):
+		strTmp = Template(temp_string.can_send_msg_temp)
+		name = "cans_" + self.name
+		delay = self.period if self.period != 0 else '_unknown_'
+		ret = strTmp.substitute(ID=self.id, DELAY=delay, MSG=name, LEN=self.length)
+		return ret
 
 	def setFrameStructStr(self):
 		# 先确认获取的数据是否符合规范
@@ -240,7 +246,11 @@ class Frame:
 				offset = "offset:" + sig["offset"] + '; ' if sig["offset"] != '' else ''
 				unit = "unit:" + sig["unit"] + ';' if sig["unit"] != '' else ''
 				meaning = "value:" + sig["meaning"] + '; ' if sig["meaning"] != '' else ''
+				if not Flags.enable_valueTable:
+					meaning = ''
 				desc = "description:" + sig["comment"] + '; ' if sig["comment"] != '' else ''
+				if not Flags.enable_comment:
+					desc = ''
                 # 判断信号是否在模型本单元内
 				if sig_data_start > fmt_end_bit or sig_data_end < fmt_start_bit:
 					continue
@@ -383,7 +393,18 @@ def getCanFrameFromExcel(filename, sheet_offset=0):
 	print("find frame: %d"%cur_msg_idx)
 	return canMsg[:cur_msg_idx]
 	
-
+def getMsgCycleTimeFromDbcString(src, msg):
+	defTxCycleTime = 0
+	for i in range(len(src)):
+		if re.match("BA_DEF_DEF_  \"GenMsgCycleTime\"", src[i]):
+			#print(lines[i].split())
+			defTxCycleTime = int(src[i].split()[-1].rstrip(';'))
+			break
+	for i in range(len(src)):
+		if re.match("BA_ \"GenMsgCycleTime\"", src[i]) and src[i].find(msg) >= 0:
+			#print(lines[i].split())
+			 return int(src[i].split()[-1].rstrip(';'))
+	return defTxCycleTime
 
 # 从DBC文件中导入CAN协议
 def getCanFrameFromDbc(filename, module = ''):
@@ -392,7 +413,9 @@ def getCanFrameFromDbc(filename, module = ''):
 		lines = fl.readlines()
 		frameCnt = 0
 		signalCnt = 0
+		
 		for idx in range(len(lines)):
+			# 获取message
 			if re.match("BO_ ", lines[idx]) and lines[idx].find("INDEPENDENT_SIG_MSG") < 0:
 				if lines[idx+1].strip() == '':
 					print("filter reserved message: %s"%lines[idx])
@@ -403,13 +426,16 @@ def getCanFrameFromDbc(filename, module = ''):
 				type = 'x'
 				if module != '':
 					type = 's' if frame[4].find(module) >= 0 else 'r'
+
+				period = getMsgCycleTimeFromDbcString(lines, frame[1])
 				comment = ''
 				for i in range(len(lines)):
 					if lines[i].find("CM_ BO_")>=0 and lines[i].find(frame[1]) > 0:
 						comment = ''.join(re.findall(".*\"(.*)\"", lines[i]))
 						break
+				
 				#print("\n\nfind a frame:id=%x, name=%s, length=%d, transmiter=%s"%(int(frame[1]), frame[2].strip(":"), int(frame[3]), frame[4]))
-				canMsg[-1].setFrame(name = frame[2].strip(":"), type = type, id = str(hex(int(frame[1]))), comment=comment, length = int(frame[3]))
+				canMsg[-1].setFrame(name = frame[2].strip(":"), type = type, period=period, id = str(hex(int(frame[1]) & 0x1fffffff)), comment=comment, length = int(frame[3]))
 
 				for tmp in range(idx+1, len(lines)):
 					if lines[tmp].find("SG_") < 0:
@@ -479,50 +505,59 @@ man_help = '''
 
 + 主要用途： 生成基于某个特定CAN协议的CAN报文结构体（基于C语言），方便后续程序的开发
 
-+ 使用方法：
++ 使用方法： `python3 produce_encode_can.py --flagfile=./flag.file`
 
-  + 通过DBC文件导入协议： `python3 produce_encode_can.py <DBC file> [module] # module指开发的模块，默认为ADAS`
-
-  + 通过EXCEL文件导入协议：`python3 produce_encode_can.py <excel file> [sheet_offset] # sheet_offset指第几个sheet表，从0开始计算`
-    excel表中需要有以下列
+    使用excel表协议时，表中需要有以下列
 
     | frame_name | frame_type | frame_id | period | frame_length | signal_name | start_bit | signal_length | signal_type | factor | offset | Range From | Range To | Initial | invalid | unit | value | description |
 '''
 
 if __name__ == '__main__':
-	if len(sys.argv) < 2 or len(sys.argv) > 3:
-		print(man_help)
-		sys.exit()
-	filename = 'do_process_rsq.cpp'
+	Flags(sys.argv)
+
+	filename = Flags.output_file
 	canMsg = []
-	if sys.argv[1].find(".xls") >= 0:
-		print("get frames information from excel: %s"%sys.argv[1])
-		sheet_offset = 0 if len(sys.argv) == 2 else sys.argv[2]
-		canMsg = getCanFrameFromExcel(sys.argv[1], sheet_offset)
-	elif sys.argv[1].find(".dbc") >= 0:
-		print("get frames information from DBC file: %s"%sys.argv[1])
-		module = 'ADAS' if len(sys.argv) == 2 else sys.argv[2]
-		canMsg = getCanFrameFromDbc(sys.argv[1], module)
+	if Flags.proto_file.find('.xls') >= 0:
+		print("get frames information from excel: file:%s, sheet_numb=%d"%(Flags.proto_file, Flags.sheet_numb))
+		canMsg = getCanFrameFromExcel(Flags.proto_file, Flags.sheet_numb)
+	elif Flags.proto_file.find('.dbc') >= 0:
+		print("get frames information from dbc: %s, network node=%s"%(Flags.proto_file, Flags.node_name))
+		canMsg = getCanFrameFromDbc(Flags.proto_file, Flags.node_name)
 	else:
 		print("unknow file format, exit")
 		sys.exit()
-	
+
 	InitFile(filename)
-	WriteData2File(filename, temp_string.fl_head_string)
+	
 
 	cans_frame_str = ''
 	canr_frame_str = ''
+	cans_list_body_str = ''
+	cans_frame_list = []
+	cans_cnt = 0
 	print("deal can protocol...")
-	print("")
 	for idx in range(len(canMsg)):
-		print("deal %d... frame id=%s\r"%(idx+1, canMsg[idx].id), end='')
+		#print("deal %d... frame id=%s\r"%(idx+1, canMsg[idx].id), end='')
 		canMsg[idx].setFrameStructStr()
 		frameStr = canMsg[idx].getFrameStructStr()
 		if canMsg[idx].type == 's':
+			cans_cnt += 1
 			cans_frame_str += frameStr
+
+			if frameStr.find("\nstruct"):
+				test = frameStr.splitlines(False)
+				testTmp = ''.join(test[2])
+				testHead = testTmp[0:testTmp.find('{')].rstrip()
+				cans_frame_list.append(testHead)
+			cans_list_body_str += canMsg[idx].getSendFrameInfo()
 		else:
 			canr_frame_str += frameStr
-	
+
+	headStrTmp = Template(temp_string.fl_head_string)
+	headStr = headStrTmp.substitute(CAN_CHANNEL=Flags.channel, PERIOD_TIME=Flags.circle_period, MACRO_CANSEND="#define NUM_OF_SEND_ID\t\t\t"+str(cans_cnt) + '\t//CAN发送数据组数')
+	WriteData2File(filename, headStr)
+	#WriteData2File(filename, temp_string.fl_head_string)
+
 	if cans_frame_str != '':
 		cans_comment='''
 /**************************************** CAN send frame ****************************************/'''
@@ -535,6 +570,18 @@ if __name__ == '__main__':
 		WriteData2File(filename, canr_comment)
 		WriteData2File(filename, canr_frame_str)
 	
+	WriteData2File(filename, "\n// CAN发送列表\n")
+	for idx in range(len(cans_frame_list)):
+		strTmp = Template("${HEAD} ${BODY};\n")
+		testHead = cans_frame_list[idx]
+		testBody = testHead[testHead.find("struct ")+7:].rstrip()
+		strTmp1 = strTmp.substitute(HEAD=testHead, BODY=testBody)
+		WriteData2File(filename, strTmp1)
+
+	send_frame_tmp = Template(temp_string.can_send_temp)
+	send_frame_str = send_frame_tmp.substitute(FRAME_LIST=cans_list_body_str)
+	WriteData2File(filename, send_frame_str)
+
 	func_comment='''
 	
 /********************************** detected dataes process **********************************/
@@ -544,6 +591,20 @@ if __name__ == '__main__':
 	WriteData2File(filename, temp_string.func_vds_temp)
 	WriteData2File(filename, temp_string.func_pds_temp)
 	WriteData2File(filename, temp_string.func_tds_temp)
+	WriteData2File(filename, temp_string.func_time_init_temp)
+	if Flags.enable_receive:
+		WriteData2File(filename, temp_string.func_can_rcv_temp)
+		
+
+	devInitTmp = Template(temp_string.func_dev_init_temp)
+	loopbackStr = '' if Flags.enable_loopback else temp_string.func_dev_init_loopback_temp
+	receiveStr = temp_string.func_dev_init_enablereceive_temp if Flags.enable_receive else temp_string.func_dev_init_disablereceive_temp
+	sendSplitStr = temp_string.func_dev_init_send_split_temp if Flags.enable_sendSplit else ''
+
+	devInitStr = devInitTmp.substitute(CAN_LOOPBACK=loopbackStr, CAN_RCV_INIT=receiveStr, CAN_SEND_SPLIT=sendSplitStr)
+
+	WriteData2File(filename, devInitStr)
+	#WriteData2File(filename, temp_string.func_dev_init_temp)
 	
 	print("\nfinish, create file: %s"%filename)
 	sys.exit()
